@@ -1,4 +1,5 @@
 #include <aJSON.h>
+#include <stdarg.h>
 
 /*
   WiFi Web Server LED Blink
@@ -41,37 +42,8 @@ WiFiServer server(80);
 
 void setup() {
   Serial.begin(115200);      // initialize serial communication
-  pinMode(RED_LED, OUTPUT);      // set the LED pin mode
 
-  // attempt to connect to Wifi network:
-  Serial.print("Attempting to connect to Network named: ");
-  // print the network name (SSID);
-  Serial.println(ssid); 
-  // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-  WiFi.begin(ssid, password);
-  while ( WiFi.status() != WL_CONNECTED) {
-    // print dots while we wait to connect
-    Serial.print(".");
-    delay(300);
-  }
-  
-  Serial.println("\nYou're connected to the network");
-  Serial.println("Waiting for an ip address");
-  
-  while (WiFi.localIP() == INADDR_NONE) {
-    // print dots while we wait for an ip addresss
-    Serial.print(".");
-    delay(300);
-  }
-
-  Serial.println("\nIP Address obtained");
-  
-  // you're connected now, so print out the status  
-  printWifiStatus();
-
-  Serial.println("Starting webserver on port 80");
-  server.begin();                           // start the web server on port 80
-  Serial.println("Webserver started!");
+  initServer();  
 }
 
 void loop() {
@@ -103,7 +75,7 @@ void loop() {
 
         // Check to see if the client request was "GET /H" or "GET /L":
         if (endsWith(buffer, "GET /allData")) {
-          allDataResponse(client, "111");
+          allDataHandler(client);
         }
       }
     }
@@ -111,6 +83,38 @@ void loop() {
     client.stop();
     Serial.println("client disconnected");
   }
+}
+
+void initServer() {
+  // attempt to connect to Wifi network:
+  Serial.print("Attempting to connect to Network named: ");
+  // print the network name (SSID);
+  Serial.println(ssid); 
+  // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+  WiFi.begin(ssid, password);
+  while ( WiFi.status() != WL_CONNECTED) {
+    // print dots while we wait to connect
+    Serial.print(".");
+    delay(300);
+  }
+  
+  Serial.println("\nYou're connected to the network");
+  Serial.println("Waiting for an ip address");
+  
+  while (WiFi.localIP() == INADDR_NONE) {
+    // print dots while we wait for an ip addresss
+    Serial.print(".");
+    delay(300);
+  }
+
+  Serial.println("\nIP Address obtained");
+  
+  // you're connected now, so print out the status  
+  printWifiStatus();
+
+  Serial.println("Starting webserver on port 80");
+  server.begin();                           // start the web server on port 80
+  Serial.println("Webserver started!");
 }
 
 //
@@ -152,20 +156,38 @@ void printWifiStatus() {
   Serial.println(ip);
 }
 
-char* buildAllDataResponseJSON(char temperature[]) {
-    aJsonObject *root;
-    root=aJson.createObject();
-    aJson.addStringToObject(root,"angle", "1");
-    aJson.addStringToObject(root,"temperature", temperature);
-    aJson.addStringToObject(root, "pressure", "3");
-    return aJson.print(root);
-}
-
-void allDataResponse(WiFiClient client, char temperature[]) {
-  char* json = buildAllDataResponseJSON(temperature);
+void respondWithJSON(WiFiClient client, int n_args, ...) {
+  if(n_args % 2 != 0 || n_args == 0) {
+    return;
+  }
+  
+  aJsonObject *root;
+  root=aJson.createObject();
+  
+  va_list ap;
+  va_start(ap, n_args);
+  
+  char* name;
+  char* value;
+  
+  for(int i = 0; i < n_args/2; i++) {
+    name = va_arg(ap, char*);
+    value = va_arg(ap, char*);
+    
+    aJson.addStringToObject(root, name, value);
+  }
+  
+  char* json = aJson.print(root);
+  
   client.println("HTTP/1.1 200 OK");
   client.println("Content-Type: text/plain;charset=utf-8");
-  client.print("Content-Length: ");client.println(strlen(temperature));
+  client.print("Content-Length: ");client.println(strlen(json));
   client.println();
   client.print(json);
+}
+
+//Response, handler, and JSON builder for "GET /allData"
+
+void allDataHandler(WiFiClient client) {
+  respondWithJSON(client, 6, "angle", "1", "temperature", "2", "pressure", "3");
 }
